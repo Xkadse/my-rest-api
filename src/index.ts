@@ -1,46 +1,48 @@
 import express, { Request, Response, NextFunction } from 'express';
+import path from 'path';
 
 const app = express();
 const port = 3000;
-const API_KEY = process.env.API_KEY || 'supersecretkey';
+const API_KEY = '123';  // Hardcoded API key for testing
 
-// Middleware zum Parsen von JSON-Anfragen
 app.use(express.json());
-app.use(express.static('public'));
-// Middleware zur Authentifizierung (optional: nur auf bestimmten Routen verwenden)
+app.use(express.static('public', {
+    index: false,
+    extensions: ['html']
+}));
+
+
 function authenticate(req: Request, res: Response, next: NextFunction) {
     const apiKey = req.header('x-api-key');
+    console.log('Expected API Key:', API_KEY);  // Log expected API key
+    console.log('Received API Key:', apiKey);   // Log received API key
 
     if (apiKey === API_KEY) {
-        // Wenn der API-Schlüssel übereinstimmt, die Anfrage weiterleiten
         next();
     } else {
-        // Andernfalls eine 401 Unauthorized Antwort senden
+        console.log('Unauthorized attempt with API Key:', apiKey);  // Log unauthorized attempts
         res.status(401).json({ message: 'Unauthorized' });
     }
 }
 
-// Beispiel-Routen
-app.get('/', (req: Request, res: Response) => {
-    res.send('Hello World!');
-});
 
-app.get('/api/greet/:name', (req: Request, res: Response) => {
-    const name = req.params.name;
-    res.json({ message: `Hello, ${name}!` });
-});
 
-app.post('/api/data', (req: Request, res: Response) => {
-    const data = req.body;
-    res.json({ received: data });
-});
-
-// Geschützte Route
+// Route for protected data
 app.get('/api/protected', authenticate, (req: Request, res: Response) => {
     res.json({ message: 'This is protected data' });
 });
 
-// Server starten
+// Route for success page
+app.get('/success', authenticate, (req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, '../protected/success.html'));
+});
+
+// Route for the home page
+app.get('/', (req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+// Start the server
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
