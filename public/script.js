@@ -1,28 +1,25 @@
+// Add an event listener to the button with the ID 'fetchData' for the 'click' event
 document.getElementById('fetchData').addEventListener('click', () => {
+    // Get the value of the input field with the ID 'apiKey'
     const apiKey = document.getElementById('apiKey').value;
-    console.log('API Key Entered:', apiKey);  // Log the API key to verify it's correctly captured
 
-    fetch('/api/protected', {
-        method: 'GET',
-        headers: {
-            'x-api-key': apiKey
-        }
+    // Sending the API key as a query parameter in the URL to the /success endpoint
+    fetch(`/success?apiKey=${apiKey}`, {
+        method: 'GET',  // Use the GET method for the request
     })
     .then(response => {
-        console.log('Response Status:', response.status);  // Log the status code
-        if (response.ok) {
-            return response.json();
+        if (response.ok) {  // Check if the response status is OK (status code 200-299)
+            // If authentication is successful, redirect to the success page with the API key in the query parameter
+            window.location.href = '/success?apiKey=' + apiKey;
         } else {
+            // If the response is not OK, throw an error with the message 'Unauthorized'
             throw new Error('Unauthorized');
         }
     })
-    .then(data => {
-        console.log('Data:', data);  // Log the data to confirm it's received
-        window.location.href = '/success';
-    })
     .catch(error => {
-        console.error('Error:', error);  // Log any errors
+        // Display the error message in the element with the ID 'response'
         document.getElementById('response').innerText = error.message;
-        document.body.style.backgroundColor = "#f8d7da";
+        // Change the background color of the body to light red to indicate an error
+        document.body.style.backgroundColor = "#f8d7da"; // Light red background for error
     });
 });
