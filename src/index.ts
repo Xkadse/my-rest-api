@@ -1,25 +1,18 @@
 import express, { Request, Response, NextFunction } from 'express';
+import bodyParser from 'body-parser';
 import path from 'path';
-import { Connection, Keypair, PublicKey, clusterApiUrl, Transaction, SystemProgram, sendAndConfirmTransaction } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction, clusterApiUrl } from '@solana/web3.js';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, createTransferInstruction, getAssociatedTokenAddress } from '@solana/spl-token';
 import { config } from 'dotenv';
 
-// Load environment variables from the .env file
 config();
 
-// Initialize Solana connection to the devnet cluster
-const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
-
-// Read Solana secret key from the .env file
-// Parse the secret key into a Uint8Array to be used for creating a Keypair
-const secretKey = process.env.SOLANA_SECRET_KEY ? JSON.parse(process.env.SOLANA_SECRET_KEY) : [];
-const keypair = Keypair.fromSecretKey(new Uint8Array(secretKey));
-
 const app = express();
-const port = 3000;
+const port = 3000; // Choose your port
 const API_KEY = '123';  // Hardcoded API key for testing
 
-// Middleware to parse JSON bodies
-app.use(express.json());
+// Middleware
+app.use(bodyParser.json());
 
 // Serve static files from the 'public' directory
 app.use(express.static('public', {
@@ -50,52 +43,87 @@ function authenticate(req: Request, res: Response, next: NextFunction) {
     }
 }
 
+
 // Route for success page (authenticated)
 // This route serves the success.html page if the API key is valid
 app.get('/success', authenticate, (req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, '../protected/success.html'));  // Send the success.html file located in the 'protected' directory
 });
 
-//& this is the route for usdc-only.html
-app.get('/usdc-only', authenticate, (req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, '../protected/usdc-only.html'));  // Send the usdc-only.html file located in the 'protected' directory
-});
+// Devnet
+const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
 
-// Route for sending SOL (authenticated)
-// This route handles the POST request to send SOL from the server's keypair to the recipient
-app.post('/api/send', authenticate, async (req: Request, res: Response) => {
+// Prepare secret key from .env
+const secretKey = process.env.SOLANA_SECRET_KEY ? JSON.parse(process.env.SOLANA_SECRET_KEY) : [];
+const payer = Keypair.fromSecretKey(new Uint8Array(secretKey));
+
+// USDC Mint address
+const usdcMintAddress = new PublicKey('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU');
+
+app.post('/api/send', async (req, res) => {
+    const { recipient, amount } = req.body;
+
+    if (!recipient || !amount) {
+        return res.status(400).json({ message: 'Recipient and amount are required' });
+    }
+
     try {
-        const { recipient, amount } = req.body;  // Extract recipient and amount from the request body
-        if (!recipient || !amount) {
-            return res.status(400).json({ message: 'Recipient and amount are required.' });  // Respond with 400 if recipient or amount are missing
-        }
+        const recipientPublicKey = new PublicKey(recipient);
 
-        const recipientPublicKey = new PublicKey(recipient);  // Create a PublicKey object from the recipient address
-        const transaction = new Transaction().add(
-            SystemProgram.transfer({
-                fromPubkey: keypair.publicKey,  // Sender's public key
-                toPubkey: recipientPublicKey,  // Recipient's public key
-                lamports: amount * 1e9,  // Convert SOL to lamports (1 SOL = 1e9 lamports)
-            })
+        // Get sender's token account
+        const senderTokenAccount = await getAssociatedTokenAddress(
+            usdcMintAddress,
+            payer.publicKey
         );
 
-        // Sign and send the transaction
-        const signature = await sendAndConfirmTransaction(connection, transaction, [keypair]);
+        // Get recipient's token account
+        const recipientTokenAccount = await getAssociatedTokenAddress(
+            usdcMintAddress,
+            recipientPublicKey
+        );
 
-        // Get balance of the sender
-        const balance = await connection.getBalance(keypair.publicKey);
+        // Create the associated token account for the recipient if it doesn’t exist
+        const recipientTokenAccountInfo = await connection.getAccountInfo(recipientTokenAccount);
+        if (!recipientTokenAccountInfo) {
+            const createAccountIx = createAssociatedTokenAccountInstruction(
+                ASSOCIATED_TOKEN_PROGRAM_ID,
+                TOKEN_PROGRAM_ID,
+                usdcMintAddress,
+                recipientTokenAccount,
+                recipientPublicKey,
+                payer.publicKey
+            );
 
-        // Convert balance from lamports to SOL
-        const balanceInSol = balance / 1e9;
+            const transaction = new Transaction().add(createAccountIx);
+            await sendAndConfirmTransaction(connection, transaction, [payer]);
+        }
 
-        // Respond with the transaction signature and the updated balance
+        // Create the transfer transaction
+        const transferIx = createTransferInstruction(
+            senderTokenAccount,
+            recipientTokenAccount,
+            payer.publicKey,
+            amount,
+            [],
+            TOKEN_PROGRAM_ID
+        );
+
+        const transaction = new Transaction().add(transferIx);
+
+        // Send the transaction
+        const signature = await sendAndConfirmTransaction(connection, transaction, [payer]);
+
+        // Get the balance (example for SOL, you might want to fetch USDC balance)
+        const balance = await connection.getTokenAccountBalance(senderTokenAccount);
+
         res.json({
             signature,
-            balance: balanceInSol,
+            balance: balance.value.uiAmountString
         });
-    } catch (error: unknown) {
-        console.error('Error processing transaction:', error);  // Log error to console
-        res.status(500).json({ message: 'Error processing transaction', error: (error as Error).message });  // Respond with 500 if an error occurs
+    } catch (error) {
+        // Type assertion to `Error` to access the `message` property
+        const errorMessage = (error as Error).message;
+        res.status(500).json({ message: errorMessage });
     }
 });
 
@@ -105,7 +133,6 @@ app.get('/', (req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-// Start the server
 app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);  // Log server start message
+    console.log(`Server running on http://localhost:${port}`);
 });

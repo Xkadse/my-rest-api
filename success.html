@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Metadata for character encoding and viewport settings -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Success Page</title>
+    <!-- Styling for the page -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+        }
+        h1 {
+            color: #333;
+        }
+        p {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <!-- Heading indicating success -->
+    <h1>Success!</h1>
+    <p>Your request was processed successfully.</p>
+
+    <!-- Section for sending SOL -->
+    <h2>Send SOL</h2>
+    <!-- Form for sending SOL -->
+    <form id="send-form">
+        <!-- Input field for recipient's public key -->
+        <input type="text" id="recipient" placeholder="Recipient Public Key" required>
+        <!-- Input field for amount of SOL to send -->
+        <input type="number" id="amount" placeholder="Amount (SOL)" step="any" required>
+        <!-- Button to submit the form -->
+        <button type="submit">Send Transaction</button>
+    </form>
+
+    <!-- Section for displaying transaction signature -->
+    <h3>Transaction Signature</h3>
+    <p id="signature"></p>
+
+    <!-- Section for displaying the balance -->
+    <h3>Your Balance</h3>
+    <p id="balance">Balance: undefined SOL</p>
+
+    <!-- JavaScript to handle form submission and display results -->
+    <script>
+        document.getElementById('send-form').addEventListener('submit', async (event) => {
+            // Prevent the default form submission behavior
+            event.preventDefault();
+            
+            // Get recipient public key and amount from the form
+            const recipient = document.getElementById('recipient').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+
+            try {
+                // Make a POST request to the /api/send endpoint
+                const response = await fetch('/api/send', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': '123'  // API key for authentication
+                    },
+                    body: JSON.stringify({ recipient, amount })  // Send recipient and amount as JSON
+                });
+                
+                // Parse the JSON response
+                const result = await response.json();
+                
+                if (response.ok) {
+                    // Display the transaction signature and balance if successful
+                    document.getElementById('signature').textContent = result.signature;
+                    document.getElementById('balance').textContent = `Balance: ${result.balance} SOL`;
+                } else {
+                    // Display the error message if the request failed
+                    document.getElementById('signature').textContent = `Error: ${result.message}`;
+                }
+            } catch (error) {
+                // Display the error message if there was a problem with the fetch request
+                document.getElementById('signature').textContent = `Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>
